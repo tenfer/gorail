@@ -1,0 +1,66 @@
+# 打印性能信息  
+profiler = "log/rail.prof"
+
+[backend]
+data_path = "var"
+max_bytes_per_file = 111111
+max_msg_size = 1000000
+sync_every = 100
+sync_timeout = 1
+
+[canal]
+data_path = "var"
+
+[log]
+path = "log/rail.log"
+# 0 单个文件 1按天分 2按小时分
+type = 2
+highlighting = false
+level = "debug"
+
+#定义订阅的mysql主库的连接信息
+[mysql]
+addr = "127.0.0.1:3306"
+user = "root"
+password = "123456"
+
+[topic]
+name = "topic1"
+#处理topic的并发数
+concurrent_num = 10
+#topic缓存消息的池子大小
+mem_buff_size = 0
+    [[topic.channels]]
+    name = "file1"
+    #handler类型
+    type = "file"
+    #处理channel的并发数  
+    concurrent_num = 2
+    #channel缓存消息的池子大小
+    mem_buff_size = 100
+    #重试channel缓存消息的池子大小
+    retry_mem_buff_size = 100
+    retry_max_times = 5
+    retry_internal_sec = 1
+    #下面是特殊化配置
+    #数据目录
+    file_dir = "data/" 
+    #0 单个文件 1按天分 2按小时分 3按大小分
+    file_type = 0
+
+    [[topic.channels]]
+    name = "http1"
+    #handler类型
+    type = "http"
+    #处理channel的并发数  
+    concurrent_num = 10
+    #channel缓存消息的池子大小
+    mem_buff_size = 100
+    #重试channel缓存消息的池子大小
+    retry_mem_buff_size = 100
+    retry_max_times = 50
+    retry_internal_sec = 1
+    #下面是特殊化配置
+    http_url = "http://127.0.0.1/test.php"
+    http_timeout_ms = 500
+ 
