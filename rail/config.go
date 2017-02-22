@@ -14,12 +14,18 @@ const (
 )
 
 type Config struct {
-	RunMode       int            `toml:"run_mode"`
-	Profiler      string         `toml:"profiler"`
-	BackendConfig *BackendConfig `toml:"backend"`
-	LogConfig     *LogConfig     `toml:"log"`
-	MysqlConfig   *MysqlConfig   `toml:"mysql"`
-	TopicConfig   *TopicConfig   `toml:"topic"`
+	RunMode                     int            `toml:"run_mode"`
+	Profiler                    string         `toml:"profiler"`
+	HttpListen                  int            `toml:"http_listen"`
+	QueueScanWorkerPoolMax      int            `toml:"queue_scan_worker_pool_max"`
+	QueueScanSelectionCount     int            `toml:"queue_scan_selection_count"`
+	QueueScanIntervalMs         time.Duration  `toml:"queue_scan_interval_ms"`
+	QueueScanRefreshIntervalSec time.Duration  `toml:"queue_scan_refresh_interval_sec"`
+	QueueScanDirtyPercent       float64        `toml:"queue_scan_dirty_percent"`
+	BackendConfig               *BackendConfig `toml:"backend"`
+	LogConfig                   *LogConfig     `toml:"log"`
+	MysqlConfig                 *MysqlConfig   `toml:"mysql"`
+	TopicConfig                 *TopicConfig   `toml:"topic"`
 }
 
 type BackendConfig struct {

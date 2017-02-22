@@ -1,7 +1,10 @@
 package rail
 
 import (
+	"encoding/json"
+	"errors"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -9,16 +12,28 @@ import (
 )
 
 type Http struct {
-	Client     *http.Client
-	URL        string
-	Timeout    time.Duration
-	RetryTimes int
+	client *http.Client
+	url    string
+	option *ChannelOption
 }
 
-func NewHttp(cc *ChannelConfig) Handler {
-	ht := &Http{Client: &http.Client{}}
-	ht.URL = cc.HttpUrl
-	ht.Timeout = time.Millisecond * time.Duration(cc.HttpTimeoutMs)
+func NewHttp(option *ChannelOption) Handler {
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			Dial: (&net.Dialer{
+				Timeout:   option.ConnectTimeoutMs * time.Millisecond,
+				KeepAlive: option.ConnectTimeoutMs * time.Millisecond,
+			}).Dial,
+			TLSHandshakeTimeout: option.ConnectTimeoutMs * time.Millisecond,
+		},
+		Timeout: (option.ConnectTimeoutMs + option.ReadWriteTimeoutMs) * time.Millisecond,
+	}
+
+	ht := &Http{client: client}
+	ht.url = option.HttpUrl
+	ht.option = option
+
 	return ht
 }
 
@@ -30,23 +45,36 @@ func (h *Http) Handle(m *Message) error {
 	startTime := time.Now().UnixNano()
 
 	body, _ := m.Encode2IOReader()
-	req, _ := http.NewRequest("POST", h.URL, body)
+	req, _ := http.NewRequest("POST", h.url, body)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
 
-	if resp, err := h.Client.Do(req); err != nil {
-		//需要重试
-		//TODO
+	if resp, err := h.client.Do(req); err != nil {
+		endTime := time.Now().UnixNano()
+		log.Errorf("CHANNEL(%s): cost(%d) request err(%v)", h.option.Name, endTime-startTime, err)
 		return err
 	} else {
-		_, err := ioutil.ReadAll(resp.Body)
+		var res Result
+		var err error
+		var b []byte
+		b, err = ioutil.ReadAll(resp.Body)
 		//定义好接口规范，出错是否需要重试
-		//TODO
 		if err != nil {
+			log.Errorf("CHANNEL(%s): read err(%v)", h.option.Name, err)
+			return err
+		}
+		err = json.Unmarshal(b, &res)
+		if err != nil {
+			log.Errorf("CHANNEL(%s): response is invalid json string, err(%v)", h.option.Name, err)
 			return err
 		}
 
+		if res.Errno != ErrSucc {
+			log.Errorf("CHANNEL(%s): get response(%v)", h.option.Name, res)
+			return errors.New(res.Errmsg)
+		}
+
 		endTime := time.Now().UnixNano()
-		log.Infof("http handle msgID(%v) cost(%d)", m.ID, endTime-startTime)
+		log.Debugf("CHANNEL(%s): handle msgID(%v) cost(%d)", h.option.Name, m.ID, endTime-startTime)
 		return nil
 	}
 }

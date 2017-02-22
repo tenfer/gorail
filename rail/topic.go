@@ -2,8 +2,13 @@ package rail
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,34 +26,26 @@ type Topic struct {
 	backend       BackendQueue
 	concurrentNum int //处理数据并发数
 
-	lastPushNum       uint64
-	lastConsumeNum    uint64 //上一次统计的消费数量
-	pushNum           uint64 //推送的数量
-	consumeNum        uint64 //消费数量
 	channelMap        map[string]*Channel
-	wg                sync.WaitGroup
+	wg                WaitGroupWrapper
 	exitChan          chan struct{}
 	closing           int32 //topic是否关闭
 	channelUpdateChan chan int
-	paused            int32
 	pauseChan         chan bool
+
+	option TopicOption
 }
 
 func NewTopic(topicName string, ctx *context) *Topic {
 	t := &Topic{
-		pushNum:           0,
-		consumeNum:        0,
-		lastConsumeNum:    0,
-		lastPushNum:       0,
 		name:              topicName,
 		ctx:               ctx,
 		channelMap:        make(map[string]*Channel),
 		exitChan:          make(chan struct{}),
-		concurrentNum:     ctx.rail.c.TopicConfig.ConcurrentNum,
 		pauseChan:         make(chan bool),
 		channelUpdateChan: make(chan int),
-		//memoryMsgChan:     make(chan *Message, ctx.rail.c.TopicConfig.MemBuffSize),
-		memoryMsgChan: nil,
+		memoryMsgChan:     make(chan *Message, ctx.rail.c.TopicConfig.MemBuffSize),
+		option:            TopicOption{},
 	}
 
 	t.backend = newDiskQueue(t.name,
@@ -59,6 +56,14 @@ func NewTopic(topicName string, ctx *context) *Topic {
 		ctx.rail.c.BackendConfig.SyncEvery,
 		ctx.rail.c.BackendConfig.SyncTimeout,
 	)
+
+	err := t.retrieveMetaData()
+
+	if err != nil && !os.IsNotExist(err) {
+		log.Errorf("TOPIC(%s): failed to retrieveMetaData - %s", t.name, err)
+	}
+
+	t.run()
 
 	return t
 }
@@ -88,25 +93,21 @@ func (t *Topic) Push(m *Message) error {
 		return err
 	}
 
-	atomic.AddUint64(&t.pushNum, 1)
+	atomic.AddUint64(&t.option.MessageCount, 1)
 
 	return nil
 }
 
-//Run 启动topic以及注册的channels
-func (t *Topic) Run() {
-	for i := 0; i < t.concurrentNum; i++ {
-		t.wg.Add(1)
-		go t.process(i)
-		log.Infof("consumer's rontine-%d started", i)
-	}
+//自启动
+func (t *Topic) run() {
+	t.wg.Wrap(func() { t.process() })
 
 	//打印qps信息
 	go t.Info()
 }
 
 //不断的消费队列中的消息
-func (t *Topic) process(taskID int) {
+func (t *Topic) process() {
 	var msg *Message
 	var buf []byte
 	var err error
@@ -120,9 +121,12 @@ func (t *Topic) process(taskID int) {
 	}
 	t.RUnlock()
 
-	if len(chans) > 0 {
+	if len(chans) > 0 && !t.IsPaused() {
 		memoryMsgChan = t.memoryMsgChan
 		backendChan = t.backend.ReadChan()
+	} else {
+		memoryMsgChan = nil
+		backendChan = nil
 	}
 
 	for {
@@ -142,6 +146,9 @@ func (t *Topic) process(taskID int) {
 				chans = append(chans, c)
 			}
 			t.RUnlock()
+
+			log.Infof("channel update ....... ,chans(%d)", len(chans))
+
 			if len(chans) == 0 || t.IsPaused() {
 				memoryMsgChan = nil
 				backendChan = nil
@@ -160,30 +167,31 @@ func (t *Topic) process(taskID int) {
 			}
 			continue
 		case <-t.exitChan:
-			log.Infof("topic(%s) taskId(%d) exit.", t.name, taskID)
-			t.wg.Done()
+			log.Infof("topic(%s) get exit signal.", t.name)
 			return
 		}
-		log.Debugf("msg(%v) dispatch to channel", msg.ID)
-		for _, channel := range chans {
-			chanMsg := msg
 
+		log.Debugf("channel ....... ,chans(%d)", len(chans))
+
+		for i, channel := range chans {
+			var chanMsg Message
 			// copy the message because each channel
 			// needs a unique instance but...
 			// fastpath to avoid copy if its the first channel
 			// (the topic already created the first copy)
-			//if i > 0 {
-
-			//err := DeepCopy(chanMsg, msg)
-			b, _ := chanMsg.Encode2Json()
-			log.Debugf("deep copy. chanMsg(%s)", string(b))
-			if err != nil {
-				bmsg, _ := msg.Encode2Json()
-				log.Errorf("topic(%s) failed to copy msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
-				continue
+			if i > 0 {
+				err := DeepCopy(&chanMsg, msg)
+				log.Debugf("topic(%s) copy msg.id(%v) rows(%v)", t.name, chanMsg.ID, chanMsg.Rows)
+				if err != nil {
+					bmsg, _ := msg.Encode2Json()
+					log.Errorf("topic(%s) failed to copy msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
+					continue
+				}
+			} else {
+				chanMsg = *msg
 			}
-			//}
-			err = channel.Push(chanMsg)
+
+			err = channel.Push(&chanMsg)
 			if err != nil {
 				bmsg, _ := msg.Encode2Json()
 				log.Errorf("topic(%s) failed to put msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
@@ -191,12 +199,12 @@ func (t *Topic) process(taskID int) {
 			}
 		}
 
-		atomic.AddUint64(&t.consumeNum, 1)
+		atomic.AddUint64(&t.option.MessageFinshCount, 1)
 	}
 }
 
 func (t *Topic) Close() error {
-	if !atomic.CompareAndSwapInt32(&t.closing, FlagClosing, FlagInit) {
+	if !atomic.CompareAndSwapInt32(&t.closing, FlagInit, FlagClosing) {
 		return errors.New("exiting")
 	}
 
@@ -211,6 +219,14 @@ func (t *Topic) Close() error {
 	t.flush()
 
 	err := t.backend.Close()
+	if err != nil {
+		log.Errorf("TOPIC(%s): backend close fail - %s", t.name, err)
+	}
+
+	err = t.persistMetaData()
+	if err != nil {
+		log.Errorf("TOPIC(%s): persistMetaData fail - %s", t.name, err)
+	}
 
 	log.Infof("topic(%s) close.", t.name)
 	return err
@@ -241,33 +257,52 @@ finish:
 	return nil
 }
 
-// GetChannel performs a thread safe operation
-// to return a pointer to a Channel object (potentially new)
-// for the given Topic
+func (t *Topic) ifExistChannel(channelName string) bool {
+	t.RLock()
+	defer t.RUnlock()
+	_, ok := t.channelMap[channelName]
+	return ok
+}
+
 func (t *Topic) GetChannel(channelName string) (*Channel, bool) {
+	t.RLock()
+	channel, ok := t.channelMap[channelName]
+	t.RUnlock()
+	return channel, ok
+}
+
+// AddChannel performs a thread safe operation
+// to return a pointer to a Channel object (potentially new)
+func (t *Topic) AddChannel(channelName string, option ChannelOption, notifyChannelUpdate bool) *Channel {
+	if channelName == "" {
+		return nil
+	}
+
 	t.Lock()
-	channel, isNew := t.getOrCreateChannel(channelName)
+	channel, isNew := t.getOrCreateChannel(channelName, option)
 	t.Unlock()
 
-	if isNew {
+	if isNew && notifyChannelUpdate {
 		// update messagePump state
 		select {
 		case t.channelUpdateChan <- 1:
 		case <-t.exitChan:
 		}
+
+		log.Infof("add channel(%s) option(%v)", option.Name, option)
 	}
 
-	return channel, isNew
+	return channel
 }
 
 // this expects the caller to handle locking
-func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
+func (t *Topic) getOrCreateChannel(channelName string, option ChannelOption) (*Channel, bool) {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.name, channelName, t.ctx, deleteCallback)
+		channel = NewChannel(t.name, channelName, option, t.ctx, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Infof("TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
@@ -311,9 +346,9 @@ func (t *Topic) UnPause() error {
 
 func (t *Topic) doPause(pause bool) error {
 	if pause {
-		atomic.StoreInt32(&t.paused, 1)
+		atomic.StoreInt32(&t.option.Paused, 1)
 	} else {
-		atomic.StoreInt32(&t.paused, 0)
+		atomic.StoreInt32(&t.option.Paused, 0)
 	}
 
 	select {
@@ -325,30 +360,108 @@ func (t *Topic) doPause(pause bool) error {
 }
 
 func (t *Topic) IsPaused() bool {
-	return atomic.LoadInt32(&t.paused) == 1
+	return atomic.LoadInt32(&t.option.Paused) == 1
+}
+
+func (t *Topic) Depth() int64 {
+	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
+}
+
+func (t *Topic) retrieveMetaData() error {
+	var f *os.File
+	var err error
+	var b []byte
+	var allMetaData TopicMetaData
+
+	fileName := t.metaDataFileName()
+	f, err = os.OpenFile(fileName, os.O_RDONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	b, err = ioutil.ReadAll(f)
+
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(b, &allMetaData)
+
+	if err != nil {
+		return err
+	}
+
+	t.option = allMetaData.Toption
+
+	//添加保存的channel
+	for _, cmd := range allMetaData.Cmds {
+		t.AddChannel(cmd.Name, cmd.ChannelOption, false)
+	}
+
+	return nil
+}
+
+func (t *Topic) persistMetaData() error {
+	var f *os.File
+	var b []byte
+	var err error
+	var chans []*Channel
+
+	t.RLock()
+	for _, c := range t.channelMap {
+		chans = append(chans, c)
+	}
+	t.RUnlock()
+
+	if len(chans) == 0 {
+		return nil
+	}
+
+	log.Infof("TOPIC(%s):persistMetaData channels(%d)", t.name, len(chans))
+
+	allMetaData := NewTopicMetaData(t, chans)
+
+	b, err = json.Marshal(allMetaData)
+
+	if err != nil {
+		return err
+	}
+
+	fileName := t.metaDataFileName()
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
+
+	// write to tmp file
+	f, err = os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(b)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	f.Sync()
+	f.Close()
+
+	// atomically rename
+	return os.Rename(tmpFileName, fileName)
+}
+
+func (t *Topic) metaDataFileName() string {
+	return fmt.Sprintf(path.Join(t.ctx.rail.c.BackendConfig.DataPath, "%s.meta.dat"), t.name)
 }
 
 //info 输出当前的写入和读出的qps值
 func (t *Topic) Info() {
 	for {
 		select {
-		case <-time.After(time.Second):
-
-			pushNum := atomic.LoadUint64(&t.pushNum)
-			lastPushNum := atomic.LoadUint64(&t.lastConsumeNum)
-			consumeNum := atomic.LoadUint64(&t.consumeNum)
-			lastConsumeNum := atomic.LoadUint64(&t.lastConsumeNum)
-
-			pushQps := pushNum - lastPushNum
-			consumeQps := consumeNum - lastConsumeNum
-
-			t.lastPushNum = t.pushNum
-			t.lastConsumeNum = t.consumeNum
-
-			fmt.Printf("%s: push_num(%d) consume_num(%d) send_qps(%d) consume_qps(%d) mem_num(%d) \n", time.Now(), t.pushNum, t.consumeNum, pushQps, consumeQps, len(t.memoryMsgChan))
+		case <-time.After(5 * time.Second):
+			fmt.Printf("%s: message_count(%d) message_finish_count(%d) mem_num(%d) buffered_num(%d) \n", time.Now(), t.option.MessageCount, t.option.MessageFinshCount, len(t.memoryMsgChan), t.Depth())
 
 			for _, channel := range t.channelMap {
-				fmt.Printf("%s: topic(%s) channel(%s) message_count(%d) timeout_count(%d) requeue_count(%d)\n", time.Now(), t.name, channel.name, channel.messageCount, channel.timeoutCount, channel.requeueCount)
+				fmt.Printf("%s: topic(%s) channel(%s) message_count(%d) message_finish_count(%d) timeout_count(%d) requeue_count(%d) mem_num(%d) buffered_num(%d) \n", time.Now(), t.name, channel.name, channel.option.MessageCount, channel.option.MessageFinshCount, channel.option.TimeoutCount, channel.option.RequeueCount, len(channel.memoryMsgChan), channel.Depth())
 			}
 
 			fmt.Println()

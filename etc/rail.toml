@@ -1,6 +1,19 @@
 # 打印性能信息  
 profiler = "log/rail.prof"
 
+#http监听端口
+http_listen = 8888
+
+#队列扫描定时器相关配置
+queue_scan_worker_pool_max = 4
+queue_scan_selection_count = 4
+queue_scan_interval_ms = 100
+queue_scan_refresh_interval_sec = 1
+queue_scan_dirty_percent = 0.25
+
+
+
+
 [backend]
 data_path = "var"
 max_bytes_per_file = 111111
@@ -26,41 +39,6 @@ password = "123456"
 
 [topic]
 name = "topic1"
-#处理topic的并发数
-concurrent_num = 10
 #topic缓存消息的池子大小
-mem_buff_size = 0
-    [[topic.channels]]
-    name = "file1"
-    #handler类型
-    type = "file"
-    #处理channel的并发数  
-    concurrent_num = 2
-    #channel缓存消息的池子大小
-    mem_buff_size = 100
-    #重试channel缓存消息的池子大小
-    retry_mem_buff_size = 100
-    retry_max_times = 5
-    retry_internal_sec = 1
-    #下面是特殊化配置
-    #数据目录
-    file_dir = "data/" 
-    #0 单个文件 1按天分 2按小时分 3按大小分
-    file_type = 0
-
-    [[topic.channels]]
-    name = "http1"
-    #handler类型
-    type = "http"
-    #处理channel的并发数  
-    concurrent_num = 10
-    #channel缓存消息的池子大小
-    mem_buff_size = 100
-    #重试channel缓存消息的池子大小
-    retry_mem_buff_size = 100
-    retry_max_times = 50
-    retry_internal_sec = 1
-    #下面是特殊化配置
-    http_url = "http://127.0.0.1/test.php"
-    http_timeout_ms = 500
+mem_buff_size = 1000   
  

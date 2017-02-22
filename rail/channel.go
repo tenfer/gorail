@@ -24,10 +24,6 @@ type Handler interface {
 }
 
 type Channel struct {
-	requeueCount uint64
-	messageCount uint64
-	timeoutCount uint64
-
 	sync.RWMutex
 
 	topicName      string
@@ -35,7 +31,6 @@ type Channel struct {
 	memoryMsgChan  chan *Message
 	backend        BackendQueue
 	ctx            *context
-	concurrentNum  int //处理数据并发数
 	deleteCallback func(*Channel)
 	exitMutex      sync.RWMutex
 
@@ -47,30 +42,30 @@ type Channel struct {
 	inFlightMutex    sync.Mutex
 
 	h  Handler //每个channel只能注册单个handler
-	wg sync.WaitGroup
+	wg WaitGroupWrapper
 
-	exitChan  chan struct{}
-	paused    int32
-	pauseChan chan bool
-	closing   int32
+	exitChan chan struct{}
+	closing  int32
 
-	retryStrategy    int //retry strategy
-	retryIntervalSec int64
-	retryMaxTimes    int
+	pauseChan   chan struct{}
+	restartChan chan struct{}
+
+	option ChannelOption
 }
 
-func NewChannel(topicName, channelName string, ctx *context, deleteCallback func(*Channel)) *Channel {
+func NewChannel(topicName, channelName string, option ChannelOption, ctx *context, deleteCallback func(*Channel)) *Channel {
 	c := &Channel{
-		topicName: topicName,
-		name:      channelName,
-		//memoryMsgChan: make(chan *Message, ctx.rail.c.TopicConfig.MemBuffSize),
-		memoryMsgChan:    nil,
-		deleteCallback:   deleteCallback,
-		ctx:              ctx,
-		concurrentNum:    1,
-		retryStrategy:    RetryStategyGrow,
-		retryIntervalSec: 60, //1 min
-		retryMaxTimes:    100,
+		topicName:     topicName,
+		name:          channelName,
+		memoryMsgChan: make(chan *Message, ctx.rail.c.TopicConfig.MemBuffSize),
+		//memoryMsgChan:    nil,
+		deleteCallback: deleteCallback,
+		ctx:            ctx,
+		option:         option,
+		exitChan:       make(chan struct{}),
+		pauseChan:      make(chan struct{}),
+		restartChan:    make(chan struct{}),
+		h:              GetHandlerInstance(&option),
 	}
 
 	c.initPQ()
@@ -86,16 +81,12 @@ func NewChannel(topicName, channelName string, ctx *context, deleteCallback func
 		ctx.rail.c.BackendConfig.SyncTimeout,
 	)
 
-	c.exitChan = make(chan struct{})
+	//自启动
+	c.run()
 
 	return c
 }
 
-func (c *Channel) AddHandler(handler Handler) {
-	c.Lock()
-	defer c.Unlock()
-	c.h = handler
-}
 func (c *Channel) GetHandler() Handler {
 	c.RLock()
 	defer c.RUnlock()
@@ -126,7 +117,8 @@ func (c *Channel) Push(m *Message) error {
 	}
 
 	c.put(m)
-	atomic.AddUint64(&c.messageCount, 1)
+	atomic.AddUint64(&c.option.MessageCount, 1)
+	log.Debugf("CHANNEL(%s): Get message(%v)", c.name, m.ID)
 	return nil
 }
 
@@ -147,12 +139,12 @@ func (c *Channel) put(m *Message) error {
 	return nil
 }
 
-func (c *Channel) Run() {
-	log.Infof("CHANNEL(%s): start (%d) go-routines", c.name, c.concurrentNum)
-	for i := 0; i < c.concurrentNum; i++ {
-		c.wg.Add(1)
-		go c.process()
+//启动服务
+func (c *Channel) run() {
+	for i := 0; i < c.option.ConcurrentNum; i++ {
+		c.wg.Wrap(func() { c.process() })
 	}
+	log.Infof("CHANNEL(%s): start (%d) go-routines ", c.name, c.option.ConcurrentNum)
 }
 
 // Exiting returns a boolean indicating if this channel is closed/exiting
@@ -268,8 +260,16 @@ func (c *Channel) process() {
 	var backendChan chan []byte
 	var handler Handler
 
-	memoryMsgChan = c.memoryMsgChan
-	backendChan = c.backend.ReadChan()
+	handler = c.GetHandler()
+	log.Debugf("CHANNEL(%s): pause(%d),", c.name, atomic.LoadInt32(&c.option.Paused))
+
+	if handler != nil && atomic.LoadInt32(&c.option.Paused) == 0 {
+		memoryMsgChan = c.memoryMsgChan
+		backendChan = c.backend.ReadChan()
+	} else {
+		memoryMsgChan = nil
+		backendChan = nil
+	}
 
 	for {
 		select {
@@ -280,32 +280,45 @@ func (c *Channel) process() {
 				log.Errorf("CHANNEL(%s): Message(%s) decode message error.", c.name, string(buf))
 				continue
 			}
-		case pause := <-c.pauseChan:
-			if pause {
-				memoryMsgChan = nil
-				backendChan = nil
-			} else {
-				memoryMsgChan = c.memoryMsgChan
-				backendChan = c.backend.ReadChan()
-			}
+		case <-c.pauseChan:
+			log.Infof("CHANNEL(%s): pause ...........", c.name)
+			memoryMsgChan = nil
+			backendChan = nil
+			c.pauseChan = make(chan struct{})
+			continue
+		case <-c.restartChan:
+			log.Infof("CHANNEL(%s): restart ...........", c.name)
+			memoryMsgChan = c.memoryMsgChan
+			backendChan = c.backend.ReadChan()
+			c.restartChan = make(chan struct{})
 			continue
 		case <-c.exitChan:
 			log.Infof("CHANNEL(%s): exit.", c.name)
-			c.wg.Done()
 			return
 		}
 
+		msg.Attempts++
+		//retry times  use over
+		if int(msg.Attempts) > c.option.RetryMaxTimes {
+			//TODO:记录失败消息
+			log.Infof("CHANNEL(%s): msg(%v) failed", c.name, msg)
+			continue
+		}
+
+		//把msg添加到正在处理的in-flight队列中去
+		c.StartInFlightTimeout(msg, c.option.MsgTimeoutMs)
+
 		//处理消息,仅仅支持同步调用
 		//TODO：有需求后续支持异步调用
-		handler = c.GetHandler()
-		if handler != nil {
-			err = handler.Handle(msg)
-			if err == nil {
-				c.FinishMessage(msg.ID)
-			} else {
-				timeout := c.retryTimeout(msg)
-				c.RequeueMessage(msg.ID, timeout)
-			}
+		err = handler.Handle(msg)
+		if err == nil {
+			//消息处理成功
+			c.FinishMessage(msg.ID)
+			atomic.AddUint64(&c.option.MessageFinshCount, 1)
+		} else {
+			timeout := c.retryTimeout(msg)
+			//入重试队列
+			c.RequeueMessage(msg.ID, timeout)
 		}
 	}
 }
@@ -330,21 +343,18 @@ func (c *Channel) UnPause() error {
 
 func (c *Channel) doPause(pause bool) error {
 	if pause {
-		atomic.StoreInt32(&c.paused, 1)
+		atomic.StoreInt32(&c.option.Paused, 1)
+		close(c.pauseChan)
 	} else {
-		atomic.StoreInt32(&c.paused, 0)
-	}
-
-	select {
-	case c.pauseChan <- pause:
-	case <-c.exitChan:
+		atomic.StoreInt32(&c.option.Paused, 0)
+		close(c.restartChan)
 	}
 
 	return nil
 }
 
 func (c *Channel) IsPaused() bool {
-	return atomic.LoadInt32(&c.paused) == 1
+	return atomic.LoadInt32(&c.option.Paused) == 1
 }
 
 // FinishMessage successfully discards an in-flight message
@@ -370,6 +380,8 @@ func (c *Channel) RequeueMessage(id MessageID, timeout time.Duration) error {
 		return err
 	}
 	c.removeFromInFlightPQ(msg)
+
+	log.Debugf("CHANNEL(%s): remove msg(%v)", c.name, msg)
 
 	if timeout == 0 {
 		c.exitMutex.RLock()
@@ -413,7 +425,8 @@ func (c *Channel) doRequeue(m *Message) error {
 	if err != nil {
 		return err
 	}
-	atomic.AddUint64(&c.requeueCount, 1)
+	atomic.AddUint64(&c.option.RequeueCount, 1)
+	//atomic.AddUint64(&c.requeueCount, 1)
 	return nil
 }
 
@@ -514,6 +527,7 @@ func (c *Channel) processDeferredQueue(t int64) bool {
 		dirty = true
 
 		msg := item.Value.(*Message)
+		log.Infof("processDeferredQueue: channel(%s) msgID(%d)", c.name, msg.ID)
 		_, err := c.popDeferredMessage(msg.ID)
 		if err != nil {
 			goto exit
@@ -544,12 +558,13 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			goto exit
 		}
 		dirty = true
-
+		log.Debugf("processInFlightQueue: channel(%s) msgID(%d)", c.name, msg.ID)
 		_, err := c.popInFlightMessage(msg.ID)
 		if err != nil {
 			goto exit
 		}
-		atomic.AddUint64(&c.timeoutCount, 1)
+
+		atomic.AddUint64(&c.option.TimeoutCount, 1)
 
 		//TODO:maybe we should monitor timeout messages
 		c.doRequeue(msg)
@@ -560,13 +575,13 @@ exit:
 }
 
 func (c *Channel) retryTimeout(msg *Message) time.Duration {
-	var retryNano int64
-	if c.retryStrategy == RetryStategyEqual {
-		retryNano = c.retryIntervalSec * 1000 * 1000 * 1000
-	} else if c.retryStrategy == RetryStategyGrow {
-		retryNano = int64(msg.Attempts) * c.retryIntervalSec * 1000 * 1000 * 1000
+	var retryNano time.Duration
+	if c.option.RetryStrategy == RetryStategyEqual {
+		retryNano = c.option.RetryIntervalSec * time.Second
+	} else if c.option.RetryStrategy == RetryStategyGrow {
+		retryNano = c.option.RetryIntervalSec * time.Second * time.Duration(msg.Attempts)
 	} else {
-		retryNano = c.retryIntervalSec * 1000 * 1000 * 1000
+		retryNano = c.option.RetryIntervalSec * time.Second * time.Duration(msg.Attempts)
 	}
-	return time.Duration(retryNano)
+	return retryNano
 }

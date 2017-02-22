@@ -15,7 +15,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
 项目处于开发阶段
 
 ##反馈
-本人待业，精通php、go、java，之前任职于51job、2345、百度，如果谁对我感兴趣，联系我.
+如果需求有不满足的地方，可以联系我。
 mobile:18017057834
 QQ：564387226
 email:fansichi@baidu.com
