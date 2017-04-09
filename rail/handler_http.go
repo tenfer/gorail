@@ -46,7 +46,7 @@ func (h *Http) Handle(m *Message) error {
 
 	body, _ := m.Encode2IOReader()
 	req, _ := http.NewRequest("POST", h.url, body)
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
+	req.Header.Add("Content-Type", "application/json;charset=utf-8")
 
 	if resp, err := h.client.Do(req); err != nil {
 		endTime := time.Now().UnixNano()

@@ -18,25 +18,27 @@ type Result struct {
 
 //定义错误码
 const (
-	ErrSucc                = "0"
-	ErrChannelNameEmpty    = "00101"
-	ErrChannelExist        = "00102"
-	ErrChannelTypeNotExist = "00103"
-	ErrChannelNeedHttpUrl  = "00104"
-	ErrChannelNeedTcpAddr  = "00105"
-	ErrChannelPauseInvalid = "00106"
-	ErrChannelNotExist     = "00107"
+	ErrSucc                 = "0"
+	ErrChannelNameEmpty     = "00101"
+	ErrChannelExist         = "00102"
+	ErrChannelTypeNotExist  = "00103"
+	ErrChannelNeedHttpUrl   = "00104"
+	ErrChannelNeedTcpAddr   = "00105"
+	ErrChannelPauseInvalid  = "00106"
+	ErrChannelNotExist      = "00107"
+	ErrChannelFilterNotJson = "00108"
 )
 
 var errMap = map[string]string{
-	ErrSucc:                "succ",
-	ErrChannelNameEmpty:    "channel name empty",
-	ErrChannelExist:        "channel exist",
-	ErrChannelTypeNotExist: "channel type not exist",
-	ErrChannelNeedHttpUrl:  "channel type is http, httpUrl must not be empty",
-	ErrChannelNeedTcpAddr:  "channel type is tcp, tcpAddr must not be empty",
-	ErrChannelPauseInvalid: "pause should be 1 or 0",
-	ErrChannelNotExist:     "channel not exist",
+	ErrSucc:                 "succ",
+	ErrChannelNameEmpty:     "channel name empty",
+	ErrChannelExist:         "channel exist",
+	ErrChannelTypeNotExist:  "channel type not exist",
+	ErrChannelNeedHttpUrl:   "channel type is http, httpUrl must not be empty",
+	ErrChannelNeedTcpAddr:   "channel type is tcp, tcpAddr must not be empty",
+	ErrChannelPauseInvalid:  "pause should be 1 or 0",
+	ErrChannelNotExist:      "channel not exist",
+	ErrChannelFilterNotJson: "channel filter must be valid json format",
 }
 
 //定义默认值
@@ -140,6 +142,19 @@ func channelAdd(response http.ResponseWriter, request *http.Request) {
 		result.Errno = ErrChannelNeedTcpAddr
 		response.Write(renderResult(result))
 		return
+	}
+
+	//设置过滤器
+	jsonFilter := request.Form.Get("filter")
+	var filter Filter
+	if jsonFilter != "" {
+		err := json.Unmarshal([]byte(jsonFilter), &filter)
+		if err != nil {
+			result.Errno = ErrChannelNeedTcpAddr
+			response.Write(renderResult(result))
+			return
+		}
+		entity.Filter = &filter
 	}
 
 	if timeoutMs := request.Form.Get("connectTimeoutMs"); timeoutMs == "" {

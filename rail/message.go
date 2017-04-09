@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/siddontang/go-mysql/canal"
@@ -91,12 +89,8 @@ func (m *Message) Encode2IOReader() (io.Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	urlValues := url.Values{}
-	urlValues.Add("m", string(b))
 
-	strData := urlValues.Encode()
-
-	return strings.NewReader(strData), nil
+	return bytes.NewReader(b), nil
 }
 
 func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {

@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"strings"
+
 	"github.com/ngaut/log"
 	"github.com/tenfer/gorail/internal/pqueue"
 )
@@ -295,6 +297,12 @@ func (c *Channel) process() {
 		case <-c.exitChan:
 			log.Infof("CHANNEL(%s): exit.", c.name)
 			return
+		}
+
+		//过滤操作
+		if !c.validMessage(msg) {
+			log.Debugf("CHANNEL(%s): msg(%v) filted", c.name, msg)
+			continue
 		}
 
 		msg.Attempts++
@@ -584,4 +592,46 @@ func (c *Channel) retryTimeout(msg *Message) time.Duration {
 		retryNano = c.option.RetryIntervalSec * time.Second * time.Duration(msg.Attempts)
 	}
 	return retryNano
+}
+
+//判断消息是否需要的message，对数据过滤
+func (c *Channel) validMessage(msg *Message) bool {
+	//未设置过滤器，默认不过滤
+	if c.option.Filter == nil {
+		return true
+	}
+
+	passSchema := c.checkRule(msg.Schema, c.option.Filter.Schemas)
+	if !passSchema {
+		return false
+	}
+
+	passTable := c.checkRule(msg.Table, c.option.Filter.Tables)
+	if !passTable {
+		return false
+	}
+
+	passAction := c.checkRule(msg.Action, c.option.Filter.Actions)
+	if !passAction {
+		return false
+	}
+
+	return true
+}
+
+func (c *Channel) checkRule(needCheck string, rules []string) bool {
+	ret := false
+	for _, rule := range rules {
+		if rule == "*" {
+			ret = true
+			break
+		}
+
+		if strings.Index(needCheck, rule) == 0 {
+			ret = true
+			break
+		}
+	}
+
+	return ret
 }

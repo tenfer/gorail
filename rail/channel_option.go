@@ -21,6 +21,14 @@ type ChannelOption struct {
 	MessageFinshCount uint64
 	TimeoutCount      uint64
 	Paused            int32
+
+	Filter *Filter
+}
+
+type Filter struct {
+	Schemas []string //关心的db
+	Tables  []string //关心的table
+	Actions []string //action:insert update delete etc.
 }
 
 type TopicOption struct {
