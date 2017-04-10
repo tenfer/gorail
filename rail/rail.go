@@ -41,8 +41,10 @@ func NewRail(c *Config) (*Rail, error) {
 	//日志目录确保存在
 	dir := filepath.Dir(c.LogConfig.Path)
 	exist, _ := PathExists(dir)
+
 	if !exist {
-		_, err := os.Create(dir)
+		err := os.Mkdir(dir, os.ModePerm)
+
 		if err != nil {
 			return nil, err
 		}
