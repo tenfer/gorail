@@ -68,6 +68,7 @@ func NewRail(c *Config) (*Rail, error) {
 	cfg.User = c.MysqlConfig.User
 	cfg.Password = c.MysqlConfig.Password
 	cfg.Dump.ExecutionPath = "" //不支持mysqldump
+	cfg.Flavor = c.MysqlConfig.Flavor
 
 	if canalIns, err := canal.NewCanal(cfg); err != nil {
 		log.Fatal(err)
@@ -127,6 +128,12 @@ func (r *Rail) Close() {
 
 //Do 实现接口RowEventHandler,处理binlog事件
 func (r *Rail) Do(e *canal.RowsEvent) error {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Errorf("internal error - %s", err)
+		}
+	}()
+
 	select {
 	case id := <-r.idChan:
 		message := NewMessage(id, e)

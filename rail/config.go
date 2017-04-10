@@ -47,6 +47,7 @@ type MysqlConfig struct {
 	Addr     string `toml:"addr"`
 	User     string `toml:"user"`
 	Password string `toml:"password"`
+	Flavor   string `toml:"flavor"`
 }
 type TopicConfig struct {
 	Name           string           `toml:"name"`
