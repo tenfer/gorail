@@ -18,9 +18,9 @@ type MessageID [MsgIDLength]byte
 
 //Message 消息基类
 type Message struct {
-	ID        MessageID
-	Timestamp int64
-	Attempts  uint16
+	ID        MessageID `json:"id"`
+	Timestamp int64     `json:"timestamp"`
+	Attempts  uint16    `json:"attempts"`
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -28,11 +28,11 @@ type Message struct {
 	index      int
 	deferred   time.Duration
 
-	Action  string
-	Schema  string
-	Table   string
-	Rows    []map[string]interface{} //保存目前的数据
-	RawRows []map[string]interface{} //保存更新前的数据，只有update操作才有
+	Action  string                   `json:"action"`
+	Schema  string                   `json:"schema"`
+	Table   string                   `json:"table"`
+	Rows    []map[string]interface{} `json:"rows"`     //保存目前的数据
+	RawRows []map[string]interface{} `json:"raw_rows"` //保存更新前的数据，只有update操作才有
 }
 
 //NewMessage 初始化消息
