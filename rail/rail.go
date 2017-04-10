@@ -7,6 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"path/filepath"
+
+	"os"
+
 	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/canal"
 )
@@ -34,10 +38,22 @@ type Rail struct {
 
 //NewRail 初始化
 func NewRail(c *Config) (*Rail, error) {
+	//日志目录确保存在
+	dir := filepath.Dir(c.LogConfig.Path)
+	exist, _ := PathExists(dir)
+	if !exist {
+		_, err := os.Create(dir)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	//配置日志
 	log.SetHighlighting(c.LogConfig.Highlighting)
 	log.SetLevel(log.StringToLogLevel(c.LogConfig.Level))
+	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
 	log.SetOutputByName(c.LogConfig.Path)
+
 	if c.LogConfig.Type == LogTypeDay {
 		log.SetRotateByDay()
 	} else if c.LogConfig.Type == LogTypeHour {
@@ -49,6 +65,7 @@ func NewRail(c *Config) (*Rail, error) {
 	cfg.Addr = c.MysqlConfig.Addr
 	cfg.User = c.MysqlConfig.User
 	cfg.Password = c.MysqlConfig.Password
+	cfg.Dump.ExecutionPath = "" //不支持mysqldump
 
 	if canalIns, err := canal.NewCanal(cfg); err != nil {
 		log.Fatal(err)

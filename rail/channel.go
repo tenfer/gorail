@@ -621,6 +621,7 @@ func (c *Channel) validMessage(msg *Message) bool {
 
 func (c *Channel) checkRule(needCheck string, rules []string) bool {
 	ret := false
+
 	for _, rule := range rules {
 		if rule == "*" {
 			ret = true

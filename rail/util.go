@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"math/rand"
+	"os"
 )
 
 func LowerFirstLetter(str string) string {
@@ -74,4 +75,15 @@ func UniqRands(l int, n int) []int {
 	}
 exit:
 	return nums
+}
+
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }

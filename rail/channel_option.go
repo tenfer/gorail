@@ -26,9 +26,9 @@ type ChannelOption struct {
 }
 
 type Filter struct {
-	Schemas []string //关心的db
-	Tables  []string //关心的table
-	Actions []string //action:insert update delete etc.
+	Schemas []string `json:"schemas"` //关心的db
+	Tables  []string `json:"tables"`  //关心的table
+	Actions []string `json:"actions"` //action:insert update delete etc.
 }
 
 type TopicOption struct {
