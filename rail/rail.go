@@ -69,6 +69,7 @@ func NewRail(c *Config) (*Rail, error) {
 	cfg.Password = c.MysqlConfig.Password
 	cfg.Dump.ExecutionPath = "" //不支持mysqldump
 	cfg.Flavor = c.MysqlConfig.Flavor
+	cfg.DataDir = c.BackendConfig.DataPath
 
 	if canalIns, err := canal.NewCanal(cfg); err != nil {
 		log.Fatal(err)
