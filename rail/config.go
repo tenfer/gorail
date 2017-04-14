@@ -54,6 +54,8 @@ type TopicConfig struct {
 	ConcurrentNum  int              `toml:"concurrent_num"`
 	MemBuffSize    uint64           `toml:"mem_buff_size"`
 	ChannelConfigs []*ChannelConfig `toml:"channels"`
+	Schema         string           `toml:"schema"`
+	Table          string           `toml:"table"`
 }
 
 type ChannelConfig struct {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/canal"
 )
 
@@ -18,9 +19,9 @@ type MessageID [MsgIDLength]byte
 
 //Message 消息基类
 type Message struct {
-	ID        MessageID `json:"id"`
-	Timestamp int64     `json:"timestamp"`
-	Attempts  uint16    `json:"attempts"`
+	ID        string `json:"id"`
+	Timestamp int64  `json:"timestamp"`
+	Attempts  uint16 `json:"attempts"`
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -36,7 +37,7 @@ type Message struct {
 }
 
 //NewMessage 初始化消息
-func NewMessage(id MessageID, re *canal.RowsEvent) *Message {
+func NewMessage(id string, re *canal.RowsEvent) *Message {
 	m := new(Message)
 	m.ID = id
 	m.Timestamp = int64(time.Now().UnixNano())
@@ -86,6 +87,9 @@ func (m *Message) Encode2Json() ([]byte, error) {
 //Encode2IOReader reader
 func (m *Message) Encode2IOReader() (io.Reader, error) {
 	b, err := json.Marshal(m)
+
+	log.Debugf("message:%v", string(b))
+
 	if err != nil {
 		return nil, err
 	}

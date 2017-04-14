@@ -36,10 +36,10 @@ type Channel struct {
 	deleteCallback func(*Channel)
 	exitMutex      sync.RWMutex
 
-	deferredMessages map[MessageID]*pqueue.Item
+	deferredMessages map[string]*pqueue.Item
 	deferredPQ       pqueue.PriorityQueue
 	deferredMutex    sync.Mutex
-	inFlightMessages map[MessageID]*Message
+	inFlightMessages map[string]*Message
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
 
@@ -98,8 +98,8 @@ func (c *Channel) GetHandler() Handler {
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.ctx.rail.c.TopicConfig.MemBuffSize)/10))
 
-	c.inFlightMessages = make(map[MessageID]*Message)
-	c.deferredMessages = make(map[MessageID]*pqueue.Item)
+	c.inFlightMessages = make(map[string]*Message)
+	c.deferredMessages = make(map[string]*pqueue.Item)
 
 	c.inFlightMutex.Lock()
 	c.inFlightPQ = newInFlightPqueue(pqSize)
@@ -366,7 +366,7 @@ func (c *Channel) IsPaused() bool {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(id MessageID) error {
+func (c *Channel) FinishMessage(id string) error {
 	msg, err := c.popInFlightMessage(id)
 	if err != nil {
 		return err
@@ -381,7 +381,7 @@ func (c *Channel) FinishMessage(id MessageID) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(id MessageID, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(id string, timeout time.Duration) error {
 	// remove from inflight first
 	msg, err := c.popInFlightMessage(id)
 	if err != nil {
@@ -452,7 +452,7 @@ func (c *Channel) pushInFlightMessage(msg *Message) error {
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(id MessageID) (*Message, error) {
+func (c *Channel) popInFlightMessage(id string) (*Message, error) {
 	c.inFlightMutex.Lock()
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
@@ -496,7 +496,7 @@ func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 	return nil
 }
 
-func (c *Channel) popDeferredMessage(id MessageID) (*pqueue.Item, error) {
+func (c *Channel) popDeferredMessage(id string) (*pqueue.Item, error) {
 	c.deferredMutex.Lock()
 	// TODO: these map lookups are costly
 	item, ok := c.deferredMessages[id]

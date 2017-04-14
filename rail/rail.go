@@ -3,13 +3,12 @@ package rail
 import (
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"time"
-
-	"path/filepath"
-
-	"os"
 
 	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/canal"
@@ -135,10 +134,25 @@ func (r *Rail) Do(e *canal.RowsEvent) error {
 		}
 	}()
 
+	if r.c.TopicConfig.Schema != "" && e.Table.Schema != r.c.TopicConfig.Schema {
+		return nil
+	}
+
+	regExp, err := regexp.Compile(r.c.TopicConfig.Table)
+	//正则表达式出错
+	if err != nil {
+		return err
+	}
+
+	if r.c.TopicConfig.Table != "" && !regExp.Match([]byte(e.Table.Name)) {
+		return nil
+	}
+
 	select {
 	case id := <-r.idChan:
-		message := NewMessage(id, e)
-		log.Debugf("push msg. msg.ID(%v)", id)
+		strid := string(id[:])
+		message := NewMessage(strid, e)
+		log.Debugf("push msg. msg.ID(%v)", strid)
 		return r.topic.Push(message)
 	}
 }
