@@ -2,7 +2,7 @@
 profiler = "log/rail.prof"
 
 #http监听端口
-http_listen = 8888
+http_listen = 2060
 
 #队列扫描定时器相关配置
 queue_scan_worker_pool_max = 4
@@ -16,8 +16,10 @@ queue_scan_dirty_percent = 0.25
 
 [backend]
 data_path = "var"
-max_bytes_per_file = 111111
-max_msg_size = 1000000
+#128M
+max_bytes_per_file = 134217728
+#10M
+max_msg_size = 10485760
 sync_every = 100
 sync_timeout = 1
 
