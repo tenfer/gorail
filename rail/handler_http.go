@@ -53,6 +53,8 @@ func (h *Http) Handle(m *Message) error {
 		log.Errorf("CHANNEL(%s): cost(%d) request err(%v)", h.option.Name, endTime-startTime, err)
 		return err
 	} else {
+		defer resp.Body.Close()
+
 		var res Result
 		var err error
 		var b []byte
