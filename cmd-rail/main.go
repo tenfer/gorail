@@ -46,16 +46,16 @@ func main() {
 		log.Fatalf("new Rail error. detail:%v", err)
 	}
 
-	//r.Run()
+	promeExport := rail.NewExporter(config.HttpListen+1, "gorail", r)
+	err = promeExport.Start()
 
-	// time.Sleep(time.Second)
-	// //这里先简单测试
-	// r.AddChannel("test_channel", &rail.File{})
-	// r.AddChannel("test_channel2", &rail.Http{
-	// 	Client:  &http.Client{},
-	// 	URL:     "http://127.0.0.1/test.php",
-	// 	Timeout: 1000,
-	// })
+	if err != nil {
+		fmt.Printf("promeExport start error:%s\n", err.Error())
+		log.Errorf("promeExport start error:%s", err.Error())
+		return
+	}
+
+	fmt.Println("rail start succ.")
 
 	signal := <-sc
 

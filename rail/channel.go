@@ -11,6 +11,7 @@ import (
 
 	"strings"
 
+	"github.com/Knetic/govaluate"
 	"github.com/ngaut/log"
 	"github.com/tenfer/gorail/internal/pqueue"
 )
@@ -263,7 +264,7 @@ func (c *Channel) process() {
 	var handler Handler
 
 	handler = c.GetHandler()
-	log.Debugf("CHANNEL(%s): pause(%d),", c.name, atomic.LoadInt32(&c.option.Paused))
+	log.Infof("CHANNEL(%s): pause(%d),", c.name, atomic.LoadInt32(&c.option.Paused))
 
 	if handler != nil && atomic.LoadInt32(&c.option.Paused) == 0 {
 		memoryMsgChan = c.memoryMsgChan
@@ -301,7 +302,7 @@ func (c *Channel) process() {
 
 		//过滤操作
 		if !c.validMessage(msg) {
-			log.Debugf("CHANNEL(%s): msg(%v) filted", c.name, msg)
+			log.Debugf("CHANNEL(%s): msg(%s %s) filted", c.name, msg.ID, msg.Brief())
 			continue
 		}
 
@@ -309,25 +310,26 @@ func (c *Channel) process() {
 		//retry times  use over
 		if int(msg.Attempts) > c.option.RetryMaxTimes {
 			//TODO:记录失败消息
-			log.Infof("CHANNEL(%s): msg(%v) failed", c.name, msg)
+			log.Warnf("CHANNEL(%s): msg(%s %s) retry all times", c.name, msg.ID, msg.Brief())
 			continue
 		}
 
 		//把msg添加到正在处理的in-flight队列中去
-		c.StartInFlightTimeout(msg, c.option.MsgTimeoutMs)
+		//c.StartInFlightTimeout(msg, c.option.MsgTimeoutMs)
 
 		//处理消息,仅仅支持同步调用
 		//TODO：有需求后续支持异步调用
 		err = handler.Handle(msg)
 		if err == nil {
 			//消息处理成功
-			c.FinishMessage(msg.ID)
+			//c.FinishMessage(msg.ID)
 			atomic.AddUint64(&c.option.MessageFinshCount, 1)
 		} else {
 			timeout := c.retryTimeout(msg)
 			//入重试队列
 			c.RequeueMessage(msg.ID, timeout)
 		}
+
 	}
 }
 
@@ -614,6 +616,48 @@ func (c *Channel) validMessage(msg *Message) bool {
 	passAction := c.checkRule(msg.Action, c.option.Filter.Actions)
 	if !passAction {
 		return false
+	}
+
+	if len(msg.Rows) > 0 {
+		filterRows := make([]map[string]interface{}, 0, len(msg.Rows))
+		filterRawRows := make([]map[string]interface{}, 0, len(msg.RawRows))
+
+		exp, err := govaluate.NewEvaluableExpression(c.option.Filter.Expression)
+		if err != nil {
+			log.Warnf("filter expression error - %s", err)
+			return false
+		}
+
+		var result interface{}
+
+		for i, row := range msg.Rows {
+			result, err = exp.Evaluate(row)
+
+			log.Debug("filter.expression:", c.option.Filter.Expression, msg.ID, result)
+
+			if err != nil {
+				log.Warnf("filter expression evaluate error - %s", err)
+				return false
+			}
+			if rRes, ok := result.(bool); !ok {
+				log.Warnf("filter expression must return bool value")
+				return false
+			} else if !rRes {
+				continue
+			} else {
+				filterRows = append(filterRows, row)
+				if msg.Action == "update" {
+					filterRawRows = append(filterRawRows, msg.RawRows[i])
+				}
+			}
+		}
+		if len(filterRows) > 0 {
+			//修改msg的数据
+			msg.Rows = filterRows
+			msg.RawRows = filterRawRows
+		} else {
+			return false
+		}
 	}
 
 	return true

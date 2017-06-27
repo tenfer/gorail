@@ -151,9 +151,11 @@ func (r *Rail) Do(e *canal.RowsEvent) error {
 	select {
 	case id := <-r.idChan:
 		strid := string(id[:])
-		message := NewMessage(strid, e)
-		log.Debugf("push msg. msg.ID(%v)", strid)
-		return r.topic.Push(message)
+		msg := NewMessage(strid, e)
+
+		log.Infof("push message(id=%s db=%s table=%s action=%s pk=%s) to topic", msg.ID, msg.Schema, msg.Table, msg.Action, msg.Brief())
+
+		return r.topic.Push(msg)
 	}
 }
 

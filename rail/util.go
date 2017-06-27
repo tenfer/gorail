@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"math/rand"
 	"os"
+	"time"
 )
 
 func LowerFirstLetter(str string) string {
@@ -86,4 +87,22 @@ func PathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func GetMicroSecond() int64 {
+	return time.Now().UnixNano() / 1000
+}
+
+func MaxInt64(a int64, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func MinInt64(a int64, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
