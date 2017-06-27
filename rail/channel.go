@@ -618,6 +618,10 @@ func (c *Channel) validMessage(msg *Message) bool {
 		return false
 	}
 
+	if c.option.Filter.Expression == "" {
+		return true
+	}
+
 	if len(msg.Rows) > 0 {
 		filterRows := make([]map[string]interface{}, 0, len(msg.Rows))
 		filterRawRows := make([]map[string]interface{}, 0, len(msg.RawRows))
@@ -665,6 +669,10 @@ func (c *Channel) validMessage(msg *Message) bool {
 
 func (c *Channel) checkRule(needCheck string, rules []string) bool {
 	ret := false
+
+	if needCheck == "" {
+		return true
+	}
 
 	for _, rule := range rules {
 		if rule == "*" {
