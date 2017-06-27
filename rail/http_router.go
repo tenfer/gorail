@@ -2,6 +2,7 @@ package rail
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"sync"
@@ -63,6 +64,9 @@ var httpRouterMap = map[string]func(http.ResponseWriter, *http.Request){
 	"/topic/pause":       topicPause,
 	"/topic/getchannels": topicGetChannels,
 	"/topic/status":      topicStatus,
+
+	//gorail downstream api, for test
+	"/test": test,
 }
 
 var channelHandlerMap = map[string]func(*ChannelOption) Handler{
@@ -97,9 +101,10 @@ func renderResult(result *Result) []byte {
 			result.Errmsg = msg
 		}
 	}
-	log.Debugf("result:%v", result)
 	b, _ := json.Marshal(&result)
-	log.Debugf("json:%s", string(b))
+
+	log.Infof("http response:%s", string(b))
+
 	return b
 }
 
@@ -351,5 +356,16 @@ func topicStatus(response http.ResponseWriter, request *http.Request) {
 
 	result.Errno = ErrSucc
 	result.Data = globalRail.topic.option
+	response.Write(renderResult(result))
+}
+
+func test(response http.ResponseWriter, request *http.Request) {
+	b, _ := ioutil.ReadAll(request.Body)
+
+	log.Infof("gorail_test:%s", string(b))
+
+	var result *Result = &Result{}
+
+	result.Errno = ErrSucc
 	response.Write(renderResult(result))
 }

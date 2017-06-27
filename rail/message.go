@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/ngaut/log"
+	//	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/canal"
 )
 
@@ -29,11 +29,12 @@ type Message struct {
 	index      int
 	deferred   time.Duration
 
-	Action  string                   `json:"action"`
-	Schema  string                   `json:"schema"`
-	Table   string                   `json:"table"`
-	Rows    []map[string]interface{} `json:"rows"`     //保存目前的数据
-	RawRows []map[string]interface{} `json:"raw_rows"` //保存更新前的数据，只有update操作才有
+	Action      string                   `json:"action"`
+	Schema      string                   `json:"schema"`
+	Table       string                   `json:"table"`
+	Rows        []map[string]interface{} `json:"rows"`     //保存目前的数据
+	RawRows     []map[string]interface{} `json:"raw_rows"` //保存更新前的数据，只有update操作才有
+	PrimaryKeys [][]interface{}          `json:"primary_keys"`
 }
 
 //NewMessage 初始化消息
@@ -47,6 +48,16 @@ func NewMessage(id string, re *canal.RowsEvent) *Message {
 	m.Action = re.Action
 	m.Schema = re.Table.Schema
 	m.Table = re.Table.Name
+
+	m.PrimaryKeys = make([][]interface{}, len(re.Rows))
+	for index, row := range re.Rows {
+		pk := make([]interface{}, 0, len(re.Table.PKColumns))
+
+		for _, pkIndex := range re.Table.PKColumns {
+			pk = append(pk, row[pkIndex])
+		}
+		m.PrimaryKeys[index] = pk
+	}
 
 	fields := make([]string, 0)
 	for _, column := range re.Table.Columns {
@@ -88,8 +99,6 @@ func (m *Message) Encode2Json() ([]byte, error) {
 func (m *Message) Encode2IOReader() (io.Reader, error) {
 	b, err := json.Marshal(m)
 
-	log.Debugf("message:%v", string(b))
-
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +118,16 @@ func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) err
 func (m *Message) WriteTo(w io.Writer) (int, error) {
 	jsonBytes, _ := m.Encode2Json()
 	return w.Write(jsonBytes)
+}
+
+func (m *Message) Brief() string {
+	b, _ := json.Marshal(m.PrimaryKeys)
+	return string(b)
+}
+
+func (m *Message) Detail() string {
+	b, _ := json.Marshal(m)
+	return string(b)
 }
 
 func decodeJson2Message(data []byte) (*Message, error) {

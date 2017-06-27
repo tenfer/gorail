@@ -77,11 +77,15 @@ func (t *Topic) Push(m *Message) error {
 		return errors.New("topic exiting.")
 	}
 
+	//添加监控
+	countScope := GetCountGlobal().NewCountScope(fmt.Sprintf("topic_%s_send", t.name))
+	countScope.SetErr()
+	defer countScope.End()
+
 	var err error
 	select {
 	case t.memoryMsgChan <- m:
 	default:
-		log.Debugf("disk queue:======================%v", m.ID)
 		buf := bufferPoolGet()
 		err = writeMessageToBackend(buf, m, t.backend)
 		bufferPoolPut(buf)
@@ -91,6 +95,8 @@ func (t *Topic) Push(m *Message) error {
 		b, _ := m.Encode2Json()
 		log.Errorf("topic(%s) Message(%s) send to Backend Queue error.", t.name, string(b))
 		return err
+	} else {
+		countScope.SetOk()
 	}
 
 	atomic.AddUint64(&t.option.MessageCount, 1)
@@ -102,8 +108,9 @@ func (t *Topic) Push(m *Message) error {
 func (t *Topic) run() {
 	t.wg.Wrap(func() { t.process() })
 
+	//change to promtheus
 	//打印qps信息
-	go t.Info()
+	//go t.Info()
 }
 
 //不断的消费队列中的消息
@@ -171,7 +178,11 @@ func (t *Topic) process() {
 			return
 		}
 
-		log.Debugf("channel ....... ,chans(%d)", len(chans))
+		//添加监控
+		countScope := GetCountGlobal().NewCountScope(fmt.Sprintf("topic_%s_process", t.name))
+		countScope.SetErr()
+
+		//log.Debugf("channel ....... ,chans(%d)", len(chans))
 
 		for i, channel := range chans {
 			var chanMsg Message
@@ -181,10 +192,10 @@ func (t *Topic) process() {
 			// (the topic already created the first copy)
 			if i > 0 {
 				err := DeepCopy(&chanMsg, msg)
-				log.Debugf("topic(%s) copy msg.id(%v) rows(%v)", t.name, chanMsg.ID, chanMsg.Rows)
+				log.Debugf("topic(%s): copy msg.id(%v) to channel(%s)", t.name, chanMsg.ID, channel.name)
 				if err != nil {
 					bmsg, _ := msg.Encode2Json()
-					log.Errorf("topic(%s) failed to copy msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
+					log.Errorf("topic(%s): failed to copy msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
 					continue
 				}
 			} else {
@@ -194,12 +205,17 @@ func (t *Topic) process() {
 			err = channel.Push(&chanMsg)
 			if err != nil {
 				bmsg, _ := msg.Encode2Json()
-				log.Errorf("topic(%s) failed to put msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
+				log.Errorf("topic(%s): failed to send msg(%s) to channel(%s) - %s", t.name, string(bmsg), channel.name, err)
 				continue
 			}
 		}
 
 		atomic.AddUint64(&t.option.MessageFinshCount, 1)
+		if err == nil {
+			countScope.SetOk()
+		}
+
+		countScope.End()
 	}
 }
 
