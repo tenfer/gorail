@@ -123,6 +123,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	e.qps.Reset()
 	e.avgCost.Reset()
 	e.totalQuery.Reset()
+	e.channelQueues.Reset()
+	e.channelRetryQueues.Reset()
 
 	e.totalScrapes.Inc()
 
