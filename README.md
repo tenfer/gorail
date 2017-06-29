@@ -43,7 +43,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ```sh
     INSERT INTO test(name,age) VALUES('John', 20);
     ```
-1. 查看 log/rail.log 是不是打印了新增的记录？ ok，下游接口\http://127.0.0.1:2060/test只是一个方便为了测试的接口，仅仅是输出请求参数，你可以实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
+1. 查看 log/rail.log 是不是打印了新增的记录？ ok，httpUrl提供推送的URL,示例是gorail内置的下游接口，只会打印请求参数;实际应用，你肯定需要实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
 
 
 ## 系统组件
