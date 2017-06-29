@@ -33,7 +33,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ```
 
 1. 修改配置文件，默认配置文件 etc/rail.toml，默认Addr=127.0.0.1:3306 用户名=root 密码=123456修改，不是请自行修改
-1. 下载relases版本(https://github.com/tenfer/gorail/archive/1.0.0.tar.gz) 
+1. [下载最新版本](https://github.com/tenfer/gorail/archive/1.0.0.tar.gz) 
 1. cd gorail && bin/rail 
 1. 新增channel
     ```sh
@@ -43,7 +43,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ```sh
     INSERT INTO test(name,age) VALUES('John', 20);
     ```
-1. 查看 log/rail.log 是不是打印了新增的记录？ ok，下游接口"http://127.0.0.1:2060/test"只是一个方便为了测试的接口，仅仅是输出请求参数，你可以实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
+1. 查看 log/rail.log 是不是打印了新增的记录？ ok，下游接口\http://127.0.0.1:2060/test只是一个方便为了测试的接口，仅仅是输出请求参数，你可以实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
 
 
 ## 系统组件
