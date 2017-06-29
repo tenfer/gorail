@@ -1,49 +1,49 @@
 # gorail
 gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时推送系统。
  
-## Quick start(快速使用)
+## quick start(快速使用)
 1. 确保订阅的mysql的binlog format是ROW，不是的话，按下面的方式修改 
- * 查看binlog格式
-```sh
-> mysql  -uroot -p123456 -h127.0.0.1 -P3306 test
-mysql> show variables like 'binlog_format%';
-+---------------+-------+
-| Variable_name | Value |
-+---------------+-------+
-| binlog_format | ROW   |
-+---------------+-------+
-1 row in set, 1 warning (0.00 sec)
-```
- * 动态修改binlog format为ROW
- ```sh
- mysql> SET GLOBAL binlog_format = 'ROW';  
- ```
- * 永久修改，需要更改my.ini配置, 修改binlog_format="ROW",重启mysql服务
-
+    ```sh
+    * 查看binlog格式
+   
+    > mysql  -uroot -p123456 -h127.0.0.1 -P3306 test
+    mysql> show variables like 'binlog_format%';
+    +---------------+-------+
+    | Variable_name | Value |
+    +---------------+-------+
+    | binlog_format | ROW   |
+    +---------------+-------+
+    1 row in set, 1 warning (0.00 sec)
+    
+    * 动态修改binlog format为ROW   
+    mysql> SET GLOBAL binlog_format = 'ROW';  
+    
+    * 永久修改，需要更改my.ini配置, 修改binlog_format="ROW",重启mysql服务
+    ```
 1. 新建test表
-```sh
-USE test;
-CREATE TABLE IF NOT EXISTS `test` (
-  `id` bigint(10) NOT NULL AUTO_INCREMENT,
-  `name` varchar(20) NOT NULL,
-  `age` int(4) default 0,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
+    ```sh
+    USE test;
+    CREATE TABLE IF NOT EXISTS `test` (
+    `id` bigint(10) NOT NULL AUTO_INCREMENT,
+    `name` varchar(20) NOT NULL,
+    `age` int(4) default 0,
+    PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
 
-```
+    ```
 
 1. 修改配置文件，默认配置文件 etc/rail.toml，默认Addr=127.0.0.1:3306 用户名=root 密码=123456修改，不是请自行修改
 1. 下载relases版本(https://github.com/tenfer/gorail/archive/1.0.0.tar.gz) 
 1. cd gorail && bin/rail 
 1. 新增channel
-```sh
-curl -X POST   http://127.0.0.1:2060/channel/add -d 'name=test&ctype=http&httpUrl=http://127.0.0.1:2060/test&filter={"schemas":["test"],"tables":["test"],"actions":["*"],"expression":"age > 0"}'
-```
+    ```sh
+    curl -X POST   http://127.0.0.1:2060/channel/add -d 'name=test&ctype=http&httpUrl=http://127.0.0.1:2060/test&filter={"schemas":["test"],"tables":["test"],"actions":["*"],"expression":"age > 0"}'
+    ```
 1. 往 test表插一条记录 
-```sh
-INSERT INTO test(name,age) VALUES('John', 20);
-```
-1. 查看 log/rail.log 是不是打印了新增的记录？ ok，下游接口>http://127.0.0.1:2060/test，只是一个方便为了测试的接口，仅仅是输出请求参数，你可以实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
+    ```sh
+    INSERT INTO test(name,age) VALUES('John', 20);
+    ```
+1. 查看 log/rail.log 是不是打印了新增的记录？ ok，下游接口"http://127.0.0.1:2060/test"只是一个方便为了测试的接口，仅仅是输出请求参数，你可以实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
 
 
 ## 系统组件
