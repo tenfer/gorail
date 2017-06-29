@@ -1,8 +1,8 @@
-# 打印性能信息  
-profiler = "log/rail.prof"
-
 #http监听端口
 http_listen = 2060
+
+#binlog position flush到磁盘的间隔
+binlog_flush_ms = 2000  #2s刷新一次
 
 #队列扫描定时器相关配置
 queue_scan_worker_pool_max = 4
@@ -11,20 +11,16 @@ queue_scan_interval_ms = 100
 queue_scan_refresh_interval_sec = 1
 queue_scan_dirty_percent = 0.25
 
-
-
-
 [backend]
+#the directory of keeping data of disk queue and  master.info 
 data_path = "var"
 #128M
 max_bytes_per_file = 134217728
 #10M
 max_msg_size = 10485760
 sync_every = 100
+#unit:second
 sync_timeout = 1
-
-[canal]
-data_path = "var"
 
 [log]
 path = "log/rail.log"
@@ -39,11 +35,13 @@ addr = "127.0.0.1:3306"
 user = "root"
 password = "123456"
 #mariadb or mysql
-flavor = "mariadb"  
-
+flavor = "mysql"  
 
 [topic]
-name = "topic1"
+name = "mytopic"
+schema = "test"
+table = "test"
 #topic缓存消息的池子大小
-mem_buff_size = 1000   
+mem_buff_size = 1000
+
  

@@ -8,15 +8,9 @@ import (
 	"github.com/juju/errors"
 )
 
-const (
-	RunModeSync  = iota //同步模式
-	RunModeAsync        //异步模式
-)
-
 type Config struct {
-	RunMode                     int            `toml:"run_mode"`
-	Profiler                    string         `toml:"profiler"`
 	HttpListen                  int            `toml:"http_listen"`
+	BinlogFlushMs               time.Duration  `toml:"binlog_flush_ms"`
 	QueueScanWorkerPoolMax      int            `toml:"queue_scan_worker_pool_max"`
 	QueueScanSelectionCount     int            `toml:"queue_scan_selection_count"`
 	QueueScanIntervalMs         time.Duration  `toml:"queue_scan_interval_ms"`

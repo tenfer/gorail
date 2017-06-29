@@ -1,6 +1,8 @@
 package rail
 
 import (
+	"bytes"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -8,10 +10,16 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
+	"fmt"
+
+	"github.com/BurntSushi/toml"
 	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/canal"
+	"github.com/siddontang/go-mysql/mysql"
+	"github.com/siddontang/go-mysql/replication"
 )
 
 const (
@@ -20,8 +28,16 @@ const (
 	LogTypeHour
 )
 
+type MysqlPos struct {
+	Addr string `toml:"addr"`
+	Name string `toml:"bin_name"`
+	Pos  uint32 `toml:"bin_pos"`
+}
+
 //Rail 定义Rail的结构
 type Rail struct {
+	*canal.DummyEventHandler
+
 	c     *Config
 	canal *canal.Canal
 	topic *Topic //每个rail设计成只支持单个topic
@@ -30,6 +46,9 @@ type Rail struct {
 
 	idChan   chan MessageID
 	exitChan chan struct{}
+
+	pos     *MysqlPos
+	posLock sync.Mutex
 
 	waitGroup WaitGroupWrapper
 	poolSize  int
@@ -68,7 +87,7 @@ func NewRail(c *Config) (*Rail, error) {
 	cfg.Password = c.MysqlConfig.Password
 	cfg.Dump.ExecutionPath = "" //不支持mysqldump
 	cfg.Flavor = c.MysqlConfig.Flavor
-	cfg.DataDir = c.BackendConfig.DataPath
+	cfg.LogLevel = c.LogConfig.Level
 
 	if canalIns, err := canal.NewCanal(cfg); err != nil {
 		log.Fatal(err)
@@ -87,18 +106,27 @@ func NewRail(c *Config) (*Rail, error) {
 		r.topic = NewTopic(c.TopicConfig.Name, ctx)
 
 		//注册RowsEventHandler
-		r.canal.RegRowsEventHandler(r)
+		r.canal.SetEventHandler(r)
+
+		pos, err := r.loadMasterInfo()
+		if err != nil {
+			log.Fatalf("load binlog position error - %s", err)
+		}
 
 		//启动canal
-		r.canal.Start()
+		r.canal.StartFrom(*pos)
 
 		//启动http server
 		r.waitGroup.Wrap(func() { r.startHttpServer() })
+
 		//启动msg id分配器
 		r.waitGroup.Wrap(func() { r.idPump() })
 
 		//定时扫描in-flight和deferred队列
 		r.waitGroup.Wrap(func() { r.queueScanLoop() })
+
+		//定时保存binlog position
+		r.waitGroup.Wrap(func() { r.saveMasterInfoLoop() })
 
 		log.Info("rail start ok.")
 		return r, nil
@@ -113,8 +141,16 @@ func (r *Rail) Close() {
 
 	//关闭canal
 	r.canal.Close()
+
+	//save binlog postion
+	pos := r.canal.SyncedPosition()
+	err := r.saveMasterInfo(pos.Name, pos.Pos)
+	if err != nil {
+		log.Warnf("save binlog position error when closing - %s", err)
+	}
+
 	//关闭topic
-	err := r.topic.Close()
+	err = r.topic.Close()
 	if err != nil {
 		log.Errorf("TOPIC(%s): close fail - %s", r.topic.name, err)
 	}
@@ -126,8 +162,8 @@ func (r *Rail) Close() {
 	log.Info("rail safe close.")
 }
 
-//Do 实现接口RowEventHandler,处理binlog事件
-func (r *Rail) Do(e *canal.RowsEvent) error {
+//onRow 实现接口RowEventHandler,处理binlog事件
+func (r *Rail) OnRow(e *canal.RowsEvent) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("internal error - %s", err)
@@ -138,14 +174,16 @@ func (r *Rail) Do(e *canal.RowsEvent) error {
 		return nil
 	}
 
-	regExp, err := regexp.Compile(r.c.TopicConfig.Table)
-	//正则表达式出错
-	if err != nil {
-		return err
-	}
-
-	if r.c.TopicConfig.Table != "" && !regExp.Match([]byte(e.Table.Name)) {
-		return nil
+	if r.c.TopicConfig.Table != "" {
+		regExp, err := regexp.Compile(r.c.TopicConfig.Table)
+		//正则表达式出错
+		if err != nil {
+			log.Errorf("regexp(%s) error - %s", r.c.TopicConfig.Table, err)
+			return err
+		}
+		if !regExp.Match([]byte(e.Table.Name)) {
+			return nil
+		}
 	}
 
 	select {
@@ -159,9 +197,111 @@ func (r *Rail) Do(e *canal.RowsEvent) error {
 	}
 }
 
+func (r *Rail) OnRotate(e *replication.RotateEvent) error {
+	return r.saveMasterInfo(string(e.NextLogName), uint32(e.Position))
+}
+
 //String  实现接口RowEventHandler
 func (r *Rail) String() string {
 	return "rail"
+}
+
+func (r *Rail) getMasterInfoPath() string {
+	return r.c.BackendConfig.DataPath + "/" + "master.info"
+}
+func (r *Rail) loadMasterInfo() (*mysql.Position, error) {
+	f, err := os.Open(r.getMasterInfoPath())
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	} else if os.IsNotExist(err) {
+		//文件不存在,默认从最新的位置开始
+		return r.getNewestPos()
+	}
+
+	defer f.Close()
+
+	var mysqlPos MysqlPos
+	_, err = toml.DecodeReader(f, &mysqlPos)
+	if err != nil || mysqlPos.Addr != r.c.MysqlConfig.Addr || mysqlPos.Name == "" {
+		return r.getNewestPos()
+	}
+
+	return &mysql.Position{mysqlPos.Name, mysqlPos.Pos}, nil
+}
+
+//得到最新的binlog位置
+func (r *Rail) getNewestPos() (*mysql.Position, error) {
+	result, err := r.canal.Execute("SHOW MASTER STATUS")
+	if err != nil {
+		return nil, fmt.Errorf("show master status error - %s", err)
+	}
+
+	if result.Resultset.RowNumber() != 1 {
+		return nil, errors.New("select master info error")
+	}
+
+	binlogName, _ := result.GetStringByName(0, "File")
+	binlogPos, _ := result.GetIntByName(0, "Position")
+
+	log.Infof("fetch mysql(%s)'s the newest pos:(%s, %d)", r.c.MysqlConfig.Addr, binlogName, binlogPos)
+
+	return &mysql.Position{binlogName, uint32(binlogPos)}, nil
+}
+
+func (r *Rail) saveMasterInfo(posName string, pos uint32) error {
+	r.posLock.Lock()
+	defer r.posLock.Unlock()
+
+	var buf bytes.Buffer
+	e := toml.NewEncoder(&buf)
+
+	if r.pos == nil {
+		r.pos = &MysqlPos{
+			Addr: r.c.MysqlConfig.Addr,
+			Name: posName,
+			Pos:  pos,
+		}
+	} else {
+		r.pos.Name = posName
+		r.pos.Pos = pos
+	}
+
+	e.Encode(r.pos)
+
+	f, err := os.Create(r.getMasterInfoPath())
+	if err != nil {
+		log.Warnf("create master info file error - %s", err)
+		return err
+	}
+	_, err = f.Write(buf.Bytes())
+	if err != nil {
+		log.Warnf("save master info to file  error - %s", err)
+		return err
+	}
+
+	log.Debug("save binlog position succ")
+	return nil
+}
+
+func (r *Rail) saveMasterInfoLoop() {
+	ticker := time.NewTicker(r.c.BinlogFlushMs * time.Millisecond)
+	for {
+		select {
+		case <-ticker.C:
+			pos := r.canal.SyncedPosition()
+			if r.pos == nil || pos.Name != r.pos.Name || pos.Pos != r.pos.Pos {
+				err := r.saveMasterInfo(pos.Name, pos.Pos)
+				if err != nil {
+					log.Warnf("save binlog position error from per second - %s", err)
+				}
+			}
+
+		case <-r.exitChan:
+			log.Info("save binlog position loop exit.")
+			return
+		}
+	}
+
 }
 
 func (r *Rail) idPump() {

@@ -134,7 +134,7 @@
 			"importpath": "github.com/siddontang/go-mysql/canal",
 			"repository": "https://github.com/siddontang/go-mysql",
 			"vcs": "git",
-			"revision": "d12e08a9abba0c3d8e4ffbd1bdd3cccfe6c42626",
+			"revision": "5492eeb1c28c0a3f3a8703412a43e90f4cb04660",
 			"branch": "master",
 			"path": "/canal",
 			"notests": true
@@ -143,7 +143,7 @@
 			"importpath": "github.com/siddontang/go-mysql/client",
 			"repository": "https://github.com/siddontang/go-mysql",
 			"vcs": "git",
-			"revision": "d12e08a9abba0c3d8e4ffbd1bdd3cccfe6c42626",
+			"revision": "5492eeb1c28c0a3f3a8703412a43e90f4cb04660",
 			"branch": "master",
 			"path": "client",
 			"notests": true
@@ -152,7 +152,7 @@
 			"importpath": "github.com/siddontang/go-mysql/dump",
 			"repository": "https://github.com/siddontang/go-mysql",
 			"vcs": "git",
-			"revision": "d12e08a9abba0c3d8e4ffbd1bdd3cccfe6c42626",
+			"revision": "5492eeb1c28c0a3f3a8703412a43e90f4cb04660",
 			"branch": "master",
 			"path": "dump",
 			"notests": true
@@ -161,7 +161,7 @@
 			"importpath": "github.com/siddontang/go-mysql/mysql",
 			"repository": "https://github.com/siddontang/go-mysql",
 			"vcs": "git",
-			"revision": "d12e08a9abba0c3d8e4ffbd1bdd3cccfe6c42626",
+			"revision": "5492eeb1c28c0a3f3a8703412a43e90f4cb04660",
 			"branch": "master",
 			"path": "mysql",
 			"notests": true
@@ -179,7 +179,7 @@
 			"importpath": "github.com/siddontang/go-mysql/replication",
 			"repository": "https://github.com/siddontang/go-mysql",
 			"vcs": "git",
-			"revision": "d12e08a9abba0c3d8e4ffbd1bdd3cccfe6c42626",
+			"revision": "5492eeb1c28c0a3f3a8703412a43e90f4cb04660",
 			"branch": "master",
 			"path": "replication",
 			"notests": true
@@ -188,7 +188,7 @@
 			"importpath": "github.com/siddontang/go-mysql/schema",
 			"repository": "https://github.com/siddontang/go-mysql",
 			"vcs": "git",
-			"revision": "d12e08a9abba0c3d8e4ffbd1bdd3cccfe6c42626",
+			"revision": "5492eeb1c28c0a3f3a8703412a43e90f4cb04660",
 			"branch": "master",
 			"path": "schema",
 			"notests": true
