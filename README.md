@@ -31,11 +31,11 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
 
     ```
-
-1. 修改配置文件，默认配置文件 etc/rail.toml，默认Addr=127.0.0.1:3306 用户名=root 密码=123456修改，不是请自行修改
-1. [下载最新版本](https://github.com/tenfer/gorail/archive/1.0.0.tar.gz) 
-1. cd gorail && bin/rail 
-1. 新增channel
+1. [下载最新版本](https://github.com/tenfer/gorail/archive/1.1.0.tar.gz) 
+1. 解压，tar -zxvf gorail-{version}.tar.gz &&  cp -r gorail /home/{myuser} && cd /home/{myuser}/gorail
+1. vim etc/rail.toml,默认Addr=127.0.0.1:3306 用户名=root 密码=123456修改，不是请自行修改
+1. 运行服务,bin/rail -config etc/rail.toml
+1. 新增channel，用于消费消息
     ```sh
     curl -X POST   http://127.0.0.1:2060/channel/add -d 'name=test&ctype=http&httpUrl=http://127.0.0.1:2060/test&filter={"schemas":["test"],"tables":["test"],"actions":["*"],"expression":"age > 0"}'
     ```
@@ -43,8 +43,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ```sh
     INSERT INTO test(name,age) VALUES('John', 20);
     ```
-1. 查看 log/rail.log 是不是打印了新增的记录？ ok，httpUrl提供推送的URL,示例是gorail内置的下游接口，只会打印请求参数;实际应用，你肯定需要实现自己的逻辑，比如写缓存、搜索引擎、另外的mysql集群等等
-
+1. cat log/rail.log |grep "gorail_test" 是不是打印了新增的记录？这是httpUrl配置的下游接口打印的请求参数，可以用作测试使用。生产中你需要实现自己的下游接口用于自己的业务
 
 ## 系统组件
 1. canal:   负责注册mysql，订阅binlog，并解析binlog事件
@@ -79,8 +78,24 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
 
 [详细规则](https://github.com/Knetic/govaluate/blob/master/MANUAL.md)
 
-## NOTE
-项目已经在【趣头条】推荐服务中使用
+## 最佳实践
+** gorail为了达到最终一致性，失败消息会做失败重试,所以下游接口必须支持**幂等性**(可重入)。
+** 推荐使用promethues定时采集metrics,地址[http://127.0.0.1:2061/metrics](http://127.0.0.1:2061/metrics),其中gorail_channel_queue_size显示队列长度，对实时性要求高的系统需要密切关注这个指标。如果队列堵塞：
+    ** 优化下游接口性能
+    ** 提高channel的并发数
+** gorail原理是伪装成mysql从库，要解决单点问题，可以增加gorail实例，当然下游重复请求数会增加，但为了高可用是值得的。
+
+## metrics 字段说明
+field | 描述
+------ | ------
+gorail_avg_cost | 平均耗时, 两个维度:name和status,其中 name标识一个操作，比如channel推送操作，命名格式为：downstream_{channelName};status 取值OK或者ERR，分别代表操作成功或者异常
+gorail_qps | 每秒请求数,两个维度意义同上
+gorail_topic_queue_size | 队列长度，可以用来判断分发到channel拥塞程度
+gorail_channel_queue_size | channel自己的队列长度,只有一个维度：name，命名格式为：{channelName}, 标识队列拥塞程度
+gorail_channel_retry_queue_size | channel自己的重试队列长度,只有一个维度：name，命名格式为：{channelName}, 标识重试队列拥塞程度
+
+## 应用
+项目已经在【趣头条】产品，用于文章入库elastic search,文章分词等应用
 
 ## 反馈
 如有需求不满足的地方，直接联系我，当然欢迎Pull Request.
