@@ -12,7 +12,7 @@ field | desc
 name | channel name, should be unique
 ctype | downstream interface's protocol,Now only support http
 httpUrl | the url of downstream interface that you push  
-filter | json string, push messages that match the filter conditions;<br>above mean pushing  these messages that  database is test,table is test, all actions(insert,update,delete) and each row's status equal 1,type equal 2
+filter | json string, push messages that match the filter conditions;<br>above means pushing these messages that  database is test,table is test, all actions(insert,update,delete) and each row's status equal 1,type equal 2
 connectTimeoutMs | default is 1000 ms
 readWriteTimeoutMs | default is 2000 ms
 retryMaxTimes | default is 50
