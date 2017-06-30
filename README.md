@@ -83,7 +83,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
 * 推荐使用promethues定时采集metrics,地址[http://127.0.0.1:2061/metrics](http://127.0.0.1:2061/metrics),其中gorail_channel_queue_size显示队列长度，对实时性要求高的系统需要密切关注这个指标。如果队列堵塞：
     * 优化下游接口性能
     * 提高channel的并发数
-* gorail原理是伪装成mysql从库，要解决单点问题，可以增加gorail实例，当然下游重复请求数会增加，但为了高可用是值得的。
+* gorail原理是伪装成mysql从库，要解决单点问题，可以增加gorail实例，当然下游会收到重复请求，根据自己的业务做权衡吧。
 
 ## metrics 字段说明
 field | 描述
