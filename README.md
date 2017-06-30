@@ -43,7 +43,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ```sh
     INSERT INTO test(name,age) VALUES('John', 20);
     ```
-1. cat log/rail.log |grep "gorail_test" 是不是打印了新增的记录？这是httpUrl配置的下游接口打印的请求参数，可以用作测试使用。生产中你需要实现自己的下游接口用于自己的业务
+1. cat log/rail.log |grep "gorail_test" 是不是打印了新增的记录?(具体见：**推送记录格式说明**),这是httpUrl配置的下游接口打印的请求参数，可以用作测试使用。生产中你需要实现自己的下游接口用于自己的业务
 
 ## 系统组件
 1. canal:   负责注册mysql，订阅binlog，并解析binlog事件
@@ -79,11 +79,11 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
 [详细规则](https://github.com/Knetic/govaluate/blob/master/MANUAL.md)
 
 ## 最佳实践
-** gorail为了达到最终一致性，失败消息会做失败重试,所以下游接口必须支持**幂等性**(可重入)。
-** 推荐使用promethues定时采集metrics,地址[http://127.0.0.1:2061/metrics](http://127.0.0.1:2061/metrics),其中gorail_channel_queue_size显示队列长度，对实时性要求高的系统需要密切关注这个指标。如果队列堵塞：
-    ** 优化下游接口性能
-    ** 提高channel的并发数
-** gorail原理是伪装成mysql从库，要解决单点问题，可以增加gorail实例，当然下游重复请求数会增加，但为了高可用是值得的。
+* gorail为了达到最终一致性，失败消息会做失败重试,所以下游接口必须支持**幂等性**(可重入)。
+* 推荐使用promethues定时采集metrics,地址[http://127.0.0.1:2061/metrics](http://127.0.0.1:2061/metrics),其中gorail_channel_queue_size显示队列长度，对实时性要求高的系统需要密切关注这个指标。如果队列堵塞：
+    * 优化下游接口性能
+    * 提高channel的并发数
+* gorail原理是伪装成mysql从库，要解决单点问题，可以增加gorail实例，当然下游重复请求数会增加，但为了高可用是值得的。
 
 ## metrics 字段说明
 field | 描述
