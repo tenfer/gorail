@@ -49,7 +49,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
 1. canal:   负责注册mysql，订阅binlog，并解析binlog事件
 2. topic:  canal会将binlog数据投递到topic中，每个topic可以注册多个channel，支持通过http动态注册, [API文档](doc/api.md)
 3. channel: topic和channel是pub/sub关系, 每个channel负责调用下游http接口推送消息，出错的消息会重试，保证数据最终一致性，支持多种重试策略
-4. 监控: 输出prometheus直接使用的metrics, 命名空间是gorail,监控的信息包括：1 QPS 2 队列长度 3 接口平均耗时等等 
+4. metrics: 定时采集metrics用于监控，支持prometheus, [metrics说明](#metrics字段说明)
 
 ## 推送记录格式说明
 ```sh
@@ -85,7 +85,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     * 提高channel的并发数
 * gorail原理是伪装成mysql从库，要解决单点问题，可以增加gorail实例，当然下游会收到重复请求，根据自己的业务做权衡吧。
 
-## metrics 字段说明
+## metrics字段说明
 field | 描述
 ------ | ------
 gorail_avg_cost | 平均耗时, 两个维度:name和status,其中 name标识一个操作，比如channel推送操作，命名格式为：downstream_{channelName};status 取值OK或者ERR，分别代表操作成功或者异常
