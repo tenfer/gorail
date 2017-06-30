@@ -43,7 +43,7 @@ gorail目的打造一个可靠、快速、易用的基于mysql binlog的实时�
     ```sh
     INSERT INTO test(name,age) VALUES('John', 20);
     ```
-1. cat log/rail.log |grep "gorail_test" 是不是打印了新增的记录?(具体见：**推送记录格式说明**),这是httpUrl配置的下游接口打印的请求参数，可以用作测试使用。生产中你需要实现自己的下游接口用于自己的业务
+1. cat log/rail.log |grep "gorail_test" 是不是打印了新增的记录?(**[记录格式](#推送记录格式说明)**),这是httpUrl配置的下游接口打印的请求参数，可以用作测试使用。生产中你需要实现自己的下游接口用于自己的业务
 
 ## 系统组件
 1. canal:   负责注册mysql，订阅binlog，并解析binlog事件
