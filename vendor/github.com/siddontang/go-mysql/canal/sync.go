@@ -55,7 +55,8 @@ func (c *Canal) startSyncBinlog() error {
 			if err != nil && errors.Cause(err) != schema.ErrTableNotExist {
 				// We can ignore table not exist error
 				log.Errorf("handle rows event at (%s, %d) error %v", pos.Name, curPos, err)
-				return errors.Trace(err)
+				//ignore any error by tenfer
+				//return errors.Trace(err)
 			}
 			continue
 		case *replication.XIDEvent:
